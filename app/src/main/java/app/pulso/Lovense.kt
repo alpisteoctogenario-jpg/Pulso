@@ -62,7 +62,8 @@ class Lovense(private val ctx: Context, private val onStatus: (String, Boolean) 
         }
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
             val chars = g.services.flatMap { it.characteristics }
-            tx = chars.firstOrNull { it.uuid in txIds }
+            val re = Regex("^[0-9a-f]{2}300002-00(23|24)-4bd4-bbd5-a6920e4c5653$")
+            tx = chars.firstOrNull { it.uuid in txIds || re.matches(it.uuid.toString().lowercase()) }
             last = -1
             if (tx != null) onStatus("Conectado ✔", true)
             else onStatus("Conectado, pero no reconozco el canal: " + chars.joinToString { it.uuid.toString().take(8) }, false)
