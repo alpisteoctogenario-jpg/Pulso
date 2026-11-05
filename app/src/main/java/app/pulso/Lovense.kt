@@ -66,7 +66,7 @@ class Lovense(private val ctx: Context, private val onStatus: (String, Boolean) 
             tx = chars.firstOrNull { it.uuid in txIds || re.matches(it.uuid.toString().lowercase()) }
             last = -1
             if (tx != null) onStatus("Conectado ✔", true)
-            else onStatus("Conectado, pero no reconozco el canal: " + chars.joinToString { it.uuid.toString().take(8) }, false)
+            else onStatus("Conectado, pero no reconozco el canal: " + chars.joinToString { it.uuid.toString() }, false)
         }
     }
 
