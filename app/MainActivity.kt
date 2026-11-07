@@ -80,7 +80,7 @@ class MainActivity : ComponentActivity() {
     val s by Engine.ui.collectAsState()
     var tab by remember { mutableStateOf(0) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Pulso", style = MaterialTheme.typography.headlineMedium)
+        Text("Pulso v4.0", style = MaterialTheme.typography.headlineMedium)
         Text(s.status)
         if (!s.connected && !s.running) Button({ Engine.connect() }) { Text("Conectar dispositivo") }
         if (s.msg.isNotEmpty()) Text(s.msg, color = Color(0xFFE91E63))
