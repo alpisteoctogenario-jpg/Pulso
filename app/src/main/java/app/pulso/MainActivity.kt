@@ -33,9 +33,11 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
-object Io { var export: () -> Unit = {}; var import: () -> Unit = {}; var exportPhrases: () -> Unit = {}; var importPhrases: () -> Unit = {} }
+object Io { val overlay = mutableStateOf(false); var export: () -> Unit = {}; var import: () -> Unit = {}; var exportPhrases: () -> Unit = {}; var importPhrases: () -> Unit = {} }
 
 class MainActivity : ComponentActivity() {
+    override fun onResume() { super.onResume(); Io.overlay.value = Settings.canDrawOverlays(this) }
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Engine.init(this)
@@ -80,7 +82,7 @@ class MainActivity : ComponentActivity() {
     val s by Engine.ui.collectAsState()
     var tab by remember { mutableStateOf(0) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Pulso v4.0", style = MaterialTheme.typography.headlineMedium)
+        Text("Pulso v4.2", style = MaterialTheme.typography.headlineMedium)
         Text(s.status)
         if (!s.connected && !s.running) Button({ Engine.connect() }) { Text("Conectar dispositivo") }
         if (s.msg.isNotEmpty()) Text(s.msg, color = Color(0xFFE91E63))
@@ -97,11 +99,22 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable fun PermButtons() {
+    val ctx = LocalContext.current
+    Button({
+        runCatching { ctx.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))) }
+            .onFailure { runCatching { ctx.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)) } }
+    }, Modifier.fillMaxWidth()) { Text("Conceder permiso de burbuja") }
+    OutlinedButton({
+        runCatching { ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}"))) }
+    }, Modifier.fillMaxWidth()) { Text("No lo encuentro: abrir ajustes de la app") }
+}
+
 @Composable fun Setup(s: Ui) {
     val ctx = LocalContext.current
-    if (s.bubble && !Settings.canDrawOverlays(ctx)) {
+    if (s.bubble && !Io.overlay.value) {
         Text("⚠ Sin el permiso «mostrar sobre otras apps» solo verás la notificación, no la burbuja.", color = Color(0xFFFFB74D))
-        Button({ ctx.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))) }) { Text("Conceder permiso de burbuja") }
+        PermButtons()
     }
     val modes = listOf("auto" to "✨ Auto (aprende)") + PATTERNS.map { it.id to it.name }
     Text("Patrón")
@@ -175,9 +188,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable fun Config(s: Ui) {
     val ctx = LocalContext.current
-    val canDraw = Settings.canDrawOverlays(ctx)
+    val canDraw = Io.overlay.value
     Sw("Burbuja flotante sobre otras apps", s.bubble) { Engine.setBubble(it) }
-    if (!canDraw) Button({ ctx.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))) }) { Text("Conceder permiso de burbuja") }
+    if (!canDraw) PermButtons()
     else Text("Permiso de burbuja concedido ✔", style = MaterialTheme.typography.bodySmall)
     OutlinedButton({
         if (!canDraw) Engine.toast("Primero concede el permiso de burbuja") else {
@@ -187,6 +200,8 @@ class MainActivity : ComponentActivity() {
             Handler(Looper.getMainLooper()).postDelayed({ b.hide() }, 6000)
         }
     }, Modifier.fillMaxWidth()) { Text("Probar burbuja (6 s)") }
+    val declared = remember { runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.contains("android.permission.SYSTEM_ALERT_WINDOW") == true }.getOrDefault(false) }
+    Text("Diagnóstico: ${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} · permiso declarado en el APK: ${if (declared) "sí" else "NO"} · concedido: ${if (canDraw) "sí" else "no"}", style = MaterialTheme.typography.bodySmall)
     Text("Lenguaje de los mensajes")
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf(0 to "Suave", 1 to "Mixto", 2 to "Crudo").forEach { (l, n) -> Opt(n, s.lang == l) { Engine.setLang(l) } } }
     Text("Preguntar «¿cómo vas?» cada…")

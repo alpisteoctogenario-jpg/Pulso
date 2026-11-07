@@ -27,11 +27,12 @@ class EngineService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel("p", "Sesión", NotificationManager.IMPORTANCE_LOW).apply { lockscreenVisibility = Notification.VISIBILITY_SECRET })
         nm.createNotificationChannel(NotificationChannel("a", "Preguntas", NotificationManager.IMPORTANCE_HIGH).apply { lockscreenVisibility = Notification.VISIBILITY_SECRET })
+        nm.createNotificationChannel(NotificationChannel("m", "Mensajes", NotificationManager.IMPORTANCE_HIGH).apply { setSound(null, null); enableVibration(false); lockscreenVisibility = Notification.VISIBILITY_SECRET })
         wl = (getSystemService(Context.POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pulso:w").apply { acquire(4 * 60 * 60 * 1000L) }
         val n = build(Engine.ui.value)
         if (Build.VERSION.SDK_INT >= 29) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) else startForeground(1, n)
         scope.launch {
-            var lastKey = ""; var lastAsk = false
+            var lastKey = ""; var lastAsk = false; var lastMsg = ""
             Engine.ui.collect { s ->
                 if (s.running && s.bubble) { bubble.show(); bubble.update(s) } else bubble.hide()
                 val key = "${(s.gain * 100).toInt()}|${s.elapsed / 5}|${s.joiText}"
@@ -39,6 +40,11 @@ class EngineService : Service() {
                 if (s.ask != lastAsk) {
                     lastAsk = s.ask
                     if (s.ask && !Settings.canDrawOverlays(this@EngineService)) nm.notify(2, askNotif()) else nm.cancel(2)
+                }
+                if (s.joiText != lastMsg) {
+                    lastMsg = s.joiText
+                    // Sin permiso de burbuja: los mensajes salen como notificación emergente sobre otras apps
+                    if (s.running && s.joiText.isNotEmpty() && !Settings.canDrawOverlays(this@EngineService)) nm.notify(3, msgNotif(s.joiText))
                 }
             }
         }
@@ -52,6 +58,12 @@ class EngineService : Service() {
         .setOngoing(true).setOnlyAlertOnce(true).setVisibility(NotificationCompat.VISIBILITY_SECRET)
         .setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
         .addAction(0, "− caña", pi("down")).addAction(0, "+ caña", pi("up")).addAction(0, "❤", pi("love")).addAction(0, "■ Parar", pi("stop")).build()
+
+    private fun msgNotif(t: String): Notification = NotificationCompat.Builder(this, "m")
+        .setSmallIcon(android.R.drawable.ic_media_play).setContentTitle("💬").setContentText(t)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(t)).setPriority(NotificationCompat.PRIORITY_HIGH)
+        .setTimeoutAfter(9000).setAutoCancel(true).setVisibility(NotificationCompat.VISIBILITY_SECRET)
+        .addAction(0, "− caña", pi("down")).addAction(0, "+ caña", pi("up")).addAction(0, "❤", pi("love")).build()
 
     private fun askNotif(): Notification = NotificationCompat.Builder(this, "a")
         .setSmallIcon(android.R.drawable.ic_media_play).setContentTitle("Pulso").setContentText("¿Cómo vas?")
