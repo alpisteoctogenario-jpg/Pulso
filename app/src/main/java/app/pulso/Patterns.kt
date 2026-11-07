@@ -4,7 +4,9 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 /** f(t) devuelve 0..1 (t en segundos desde que empezó el patrón). */
-class Pat(val id: String, val name: String, val f: (Double) -> Double)
+class Pat(val id: String, val name: String, val f: (Double) -> Double) {
+    val avg: Double by lazy { (0 until 600).map { f(it / 10.0) }.average() }
+}
 
 val PATTERNS = listOf(
     Pat("const", "Constante") { 0.7 },

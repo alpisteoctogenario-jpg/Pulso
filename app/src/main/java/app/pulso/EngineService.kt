@@ -23,6 +23,7 @@ class EngineService : Service() {
         super.onCreate()
         Engine.init(this)
         bubble = Bubble(this)
+        bubble.onError = { Engine.toast("Burbuja: $it") }
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel("p", "Sesión", NotificationManager.IMPORTANCE_LOW).apply { lockscreenVisibility = Notification.VISIBILITY_SECRET })
         nm.createNotificationChannel(NotificationChannel("a", "Preguntas", NotificationManager.IMPORTANCE_HIGH).apply { lockscreenVisibility = Notification.VISIBILITY_SECRET })

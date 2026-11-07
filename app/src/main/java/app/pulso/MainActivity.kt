@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -31,7 +33,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
-object Io { var export: () -> Unit = {}; var import: () -> Unit = {} }
+object Io { var export: () -> Unit = {}; var import: () -> Unit = {}; var exportPhrases: () -> Unit = {}; var importPhrases: () -> Unit = {} }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(b: Bundle?) {
@@ -54,6 +56,14 @@ class MainActivity : ComponentActivity() {
         }
         Io.export = { exp.launch("pulso-backup.json") }
         Io.import = { imp.launch(arrayOf("application/json", "*/*")) }
+        val expT = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { u ->
+            u?.let { runCatching { contentResolver.openOutputStream(it)?.use { o -> o.write(Talk.dump().toByteArray()) } }.onSuccess { Engine.toast("Frases exportadas ✔") }.onFailure { Engine.toast("Error al exportar") } }
+        }
+        val impT = registerForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
+            u?.let { val n = runCatching { Talk.importText(contentResolver.openInputStream(it)!!.bufferedReader().readText()) }.getOrDefault(0); Engine.toast(if (n > 0) "$n frases cargadas ✔" else "No encontré frases válidas") }
+        }
+        Io.exportPhrases = { expT.launch("pulso-frases.txt") }
+        Io.importPhrases = { impT.launch(arrayOf("text/plain", "*/*")) }
         setContent { MaterialTheme(colorScheme = darkColorScheme()) { Surface(Modifier.fillMaxSize()) { App() } } }
     }
 }
@@ -70,7 +80,7 @@ class MainActivity : ComponentActivity() {
     val s by Engine.ui.collectAsState()
     var tab by remember { mutableStateOf(0) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Pulso", style = MaterialTheme.typography.headlineMedium)
+        Text("Pulso v4.0", style = MaterialTheme.typography.headlineMedium)
         Text(s.status)
         if (!s.connected && !s.running) Button({ Engine.connect() }) { Text("Conectar dispositivo") }
         if (s.msg.isNotEmpty()) Text(s.msg, color = Color(0xFFE91E63))
@@ -88,6 +98,11 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable fun Setup(s: Ui) {
+    val ctx = LocalContext.current
+    if (s.bubble && !Settings.canDrawOverlays(ctx)) {
+        Text("⚠ Sin el permiso «mostrar sobre otras apps» solo verás la notificación, no la burbuja.", color = Color(0xFFFFB74D))
+        Button({ ctx.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))) }) { Text("Conceder permiso de burbuja") }
+    }
     val modes = listOf("auto" to "✨ Auto (aprende)") + PATTERNS.map { it.id to it.name }
     Text("Patrón")
     modes.chunked(2).forEach { row ->
@@ -99,10 +114,13 @@ class MainActivity : ComponentActivity() {
     Slider(s.gain.toFloat(), { Engine.setGain(it.toDouble()) }, valueRange = 0.4f..1.6f)
     Text("Apagado automático")
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf(0 to "∞", 10 to "10m", 20 to "20m", 30 to "30m", 60 to "60m").forEach { (m, n) -> Opt(n, s.timerMin == m) { Engine.setTimer(m) } } }
-    Sw("Modo JOI (te voy diciendo qué hacer)", s.joi) { Engine.setJoi(it) }
+    Sw("Modo charla / JOI (mensajes y voz)", s.joi) { Engine.setJoi(it) }
     if (s.joi) {
-        Text("Duración objetivo del guion")
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf(10, 15, 20, 30).forEach { Opt("${it}m", s.joiGoal == it) { Engine.setGoal(it) } } }
+        Sw("Con órdenes (ritmo y pausas)", s.instr) { Engine.setInstr(it) }
+        if (s.instr) {
+            Text("Duración objetivo del guion")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf(10, 15, 20, 30).forEach { Opt("${it}m", s.joiGoal == it) { Engine.setGoal(it) } } }
+        }
     }
     Button({ Engine.start() }, Modifier.fillMaxWidth().height(60.dp), enabled = s.connected) { Text("▶ EMPEZAR", fontSize = 20.sp) }
     Text(Store.summary(), style = MaterialTheme.typography.bodySmall)
@@ -111,7 +129,8 @@ class MainActivity : ComponentActivity() {
 @Composable fun Running(s: Ui) {
     Text("${s.level}", fontSize = 96.sp)
     Text((PATTERNS.find { it.id == s.curPat }?.name ?: "") + "  ·  %d:%02d".format(s.elapsed / 60, s.elapsed % 60))
-    if (s.joiText.isNotEmpty()) Text("💬 ${s.joiText}", color = Color(0xFFFF80AB), fontSize = 18.sp)
+    val last = s.chat.takeLast(4)
+    last.forEachIndexed { i, m -> Text("💬 $m", color = if (i == last.size - 1) Color(0xFFFF80AB) else Color(0xFF9E9E9E), fontSize = if (i == last.size - 1) 18.sp else 14.sp) }
     if (s.ask) {
         Text("¿Cómo vas?", style = MaterialTheme.typography.titleMedium)
         Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(6.dp)) {
@@ -128,7 +147,7 @@ class MainActivity : ComponentActivity() {
     Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(6.dp)) {
         listOf("😐", "🙂", "😊", "😍", "🔥").forEachIndexed { i, e -> OutlinedButton({ Engine.rate(i + 1) }, Modifier.weight(1f), contentPadding = PaddingValues(0.dp)) { Text(e, fontSize = 22.sp) } }
     }
-    Sw("Modo JOI", s.joi) { Engine.setJoi(it) }
+    Sw("Modo charla / JOI", s.joi) { Engine.setJoi(it) }
     Button({ Engine.stop() }, Modifier.fillMaxWidth().height(70.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828))) { Text("■ PARAR", fontSize = 22.sp) }
 }
 
@@ -160,10 +179,41 @@ class MainActivity : ComponentActivity() {
     Sw("Burbuja flotante sobre otras apps", s.bubble) { Engine.setBubble(it) }
     if (!canDraw) Button({ ctx.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))) }) { Text("Conceder permiso de burbuja") }
     else Text("Permiso de burbuja concedido ✔", style = MaterialTheme.typography.bodySmall)
+    OutlinedButton({
+        if (!canDraw) Engine.toast("Primero concede el permiso de burbuja") else {
+            val b = Bubble(ctx.applicationContext)
+            b.onError = { Engine.toast("Burbuja: $it") }
+            b.show(); b.update(Engine.ui.value.copy(level = 7, curPat = "wave", joiText = "Así se verá la burbuja sobre otras apps"))
+            Handler(Looper.getMainLooper()).postDelayed({ b.hide() }, 6000)
+        }
+    }, Modifier.fillMaxWidth()) { Text("Probar burbuja (6 s)") }
+    Text("Lenguaje de los mensajes")
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf(0 to "Suave", 1 to "Mixto", 2 to "Crudo").forEach { (l, n) -> Opt(n, s.lang == l) { Engine.setLang(l) } } }
     Text("Preguntar «¿cómo vas?» cada…")
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf(0 to "No", 2 to "2m", 3 to "3m", 5 to "5m", 10 to "10m").forEach { (m, n) -> Opt(n, s.checkMin == m) { Engine.setCheck(m) } } }
-    Sw("Voz (JOI y preguntas)", s.voice) { Engine.setVoice(it) }
-    OutlinedButton({ Engine.nextVoice() }) { Text("Cambiar voz (prueba varias)") }
+    Sw("Voz (mensajes y preguntas)", s.voice) { Engine.setVoice(it) }
+    var open by remember { mutableStateOf(false) }
+    val vs = Engine.voiceList()
+    Box {
+        OutlinedButton({ open = true }, Modifier.fillMaxWidth()) { Text("Voz: " + (vs.find { it.first == s.voiceName }?.second ?: "automática") + "  ▾") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            if (vs.isEmpty()) DropdownMenuItem(text = { Text("No hay voces en español (instálalas abajo)") }, onClick = { open = false })
+            vs.forEach { (n, l) -> DropdownMenuItem(text = { Text(l) }, onClick = { Engine.setVoiceByName(n); open = false }) }
+        }
+    }
+    Text("Tono de voz: %.1f".format(s.pitch))
+    Slider(s.pitch.toFloat(), { Engine.setPitch(it.toDouble()) }, valueRange = 0.7f..1.5f)
+    Text("Velocidad: %.1f".format(s.rate))
+    Slider(s.rate.toFloat(), { Engine.setRate(it.toDouble()) }, valueRange = 0.7f..1.4f)
+    Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(8.dp)) {
+        Button({ Engine.testVoice() }, Modifier.weight(1f)) { Text("Probar voz") }
+        OutlinedButton({ runCatching { ctx.startActivity(Intent("com.android.settings.TTS_SETTINGS")) } }, Modifier.weight(1f)) { Text("Más voces…") }
+    }
+    Text("Frases: expórtalas, edítalas con cualquier editor de texto y vuelve a importarlas.", style = MaterialTheme.typography.bodySmall)
+    Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(8.dp)) {
+        OutlinedButton({ Io.exportPhrases() }, Modifier.weight(1f)) { Text("Exportar frases") }
+        OutlinedButton({ Io.importPhrases() }, Modifier.weight(1f)) { Text("Importar frases") }
+    }
     Button({ Io.export() }, Modifier.fillMaxWidth()) { Text("Exportar preferencias e historial") }
     OutlinedButton({ Io.import() }, Modifier.fillMaxWidth()) { Text("Importar copia de seguridad") }
     TextButton({ Store.reset(); Engine.toast("Aprendizaje e historial borrados") }) { Text("Borrar lo aprendido y el historial") }
