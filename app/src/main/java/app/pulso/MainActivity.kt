@@ -25,7 +25,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
@@ -82,7 +85,7 @@ class MainActivity : ComponentActivity() {
     val s by Engine.ui.collectAsState()
     var tab by remember { mutableStateOf(0) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Pulso v4.2", style = MaterialTheme.typography.headlineMedium)
+        Text("Pulso v4.3", style = MaterialTheme.typography.headlineMedium)
         Text(s.status)
         if (!s.connected && !s.running) Button({ Engine.connect() }) { Text("Conectar dispositivo") }
         if (s.msg.isNotEmpty()) Text(s.msg, color = Color(0xFFE91E63))
@@ -232,6 +235,25 @@ class MainActivity : ComponentActivity() {
     Button({ Io.export() }, Modifier.fillMaxWidth()) { Text("Exportar preferencias e historial") }
     OutlinedButton({ Io.import() }, Modifier.fillMaxWidth()) { Text("Importar copia de seguridad") }
     TextButton({ Store.reset(); Engine.toast("Aprendizaje e historial borrados") }) { Text("Borrar lo aprendido y el historial") }
+
+    Text("Laboratorio del dispositivo", style = MaterialTheme.typography.titleMedium)
+    Text("Para ver si el Calor envía datos de movimiento o profundidad. Conecta, pulsa «Escuchar movimiento», mueve el dispositivo a distintas profundidades y copia el registro.", style = MaterialTheme.typography.bodySmall)
+    val rxl by Engine.rx.collectAsState()
+    val clip = LocalClipboardManager.current
+    Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(6.dp)) {
+        Opt("Batería", false, Modifier.weight(1f)) { Engine.probe("Battery;") }
+        Opt("Tipo", false, Modifier.weight(1f)) { Engine.probe("DeviceType;") }
+        Opt("Estado", false, Modifier.weight(1f)) { Engine.probe("Status:1;") }
+    }
+    Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(6.dp)) {
+        Opt("▶ Escuchar movimiento", false, Modifier.weight(2f)) { Engine.probe("StartMove:1;") }
+        Opt("■ Parar", false, Modifier.weight(1f)) { Engine.probe("StopMove:1;") }
+    }
+    Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(6.dp)) {
+        Opt("Copiar registro", false, Modifier.weight(1f)) { clip.setText(AnnotatedString(rxl.joinToString("\n"))); Engine.toast("Registro copiado") }
+        Opt("Borrar", false, Modifier.weight(1f)) { Engine.clearRx() }
+    }
+    Text(rxl.takeLast(25).joinToString("\n").ifEmpty { "(sin datos todavía)" }, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
 }
 
 @Composable fun Review(r: List<Sample>) {

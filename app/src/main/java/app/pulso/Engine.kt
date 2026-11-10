@@ -46,6 +46,7 @@ object Engine {
             if (!ok && ui.value.running && (s == "Desconectado" || s == "No encontrado"))
                 scope.launch { delay(3000); lov?.connect() }
         }
+        lov?.onRx = { addRx("RX  $it") }
     }
 
     fun reloadCfg() = ui.update {
@@ -84,6 +85,14 @@ object Engine {
 
     // ---- ajustes ----
     fun connect() { lov?.connect() }
+
+    // ---- laboratorio: registro de lo que manda el dispositivo ----
+    val rx = MutableStateFlow<List<String>>(emptyList())
+    private val tfmt = java.text.SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
+    fun addRx(l: String) { val t = synchronized(tfmt) { tfmt.format(java.util.Date()) }; rx.update { (it + "$t $l").takeLast(200) } }
+    private val allowed = setOf("Battery;", "DeviceType;", "Status:1;", "StartMove:1;", "StopMove:1;")
+    fun probe(cmd: String) { if (cmd !in allowed) return; addRx("TX  $cmd"); lov?.sendRaw(cmd) }
+    fun clearRx() { rx.value = emptyList() }
     fun setMode(m: String) = ui.update { it.copy(mode = m) }
     fun setMax(v: Int) { val x = v.coerceIn(1, 20); put("max", x.toDouble()); ui.update { it.copy(maxLvl = x) } }
     fun setGain(v: Double) { val g = ((v * 10).roundToInt() / 10.0).coerceIn(0.4, 1.6); put("gain", g); ui.update { it.copy(gain = g) } }
