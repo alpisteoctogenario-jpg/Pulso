@@ -2,7 +2,9 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 android {
     namespace = "app.pulso"
     compileSdk = 34
-    defaultConfig { applicationId = "app.pulso"; minSdk = 26; targetSdk = 34; versionCode = 1; versionName = "1.0" }
+    defaultConfig { applicationId = "app.pulso"; minSdk = 26; targetSdk = 34; versionCode = 8; versionName = "4.3" }
+    signingConfigs { create("pulso") { storeFile = file("pulso.keystore"); storePassword = "pulso123"; keyAlias = "pulso"; keyPassword = "pulso123" } }
+    buildTypes { getByName("debug") { signingConfig = signingConfigs.getByName("pulso") } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
